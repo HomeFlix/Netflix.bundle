@@ -2,6 +2,7 @@
 import re, cgi, urllib, httplib, sys
 import oauth
 
+HEADERS = {'User-agent' : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_2) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.101 Safari/537.1', 'Accept' : 'text/html,application/xhtml+xml,application/xml', 'Content-Type' : 'text/xml'}
 NETFLIX_SERVER = 'api-public.netflix.com'
 NETFLIX_PORT   = 80
 
@@ -61,6 +62,7 @@ class NetflixAuthToken(oauth.OAuthToken):
 
 class NetflixRequest(object):
 
+  custom_headers = HEADERS
   server = NETFLIX_SERVER
   port = NETFLIX_PORT
   request_token_url = REQUEST_TOKEN_URL
@@ -75,6 +77,7 @@ class NetflixRequest(object):
     self.consumer_secret = consumer_secret
 
     self.connection = httplib.HTTPConnection("%s:%d" % (self.server, self.port))
+    #self.connection.debug = 1
     self.consumer = oauth.OAuthConsumer(self.consumer_key, self.consumer_secret)
 
     self.queue_etag = None
@@ -83,11 +86,20 @@ class NetflixRequest(object):
     req = oauth.OAuthRequest.from_consumer_and_token(self.consumer, http_url = self.request_token_url)
     req.sign_request(self.signature_method, self.consumer, None)
 
-    self.connection.request(req.http_method, self.request_token_url, headers = req.to_header())
-    response = self.connection.getresponse()
-    token = NetflixAuthToken.from_string(response.read())
+    
+    #Log(self.request_token_url)
+    Log(req.to_url())
+    
+    #self.connection.debug = 1
+    #self.connection.request(req.http_method, req.to_url(), headers = HEADERS)
+    #response = self.connection.getresponse()
+    #token = NetflixAuthToken.from_string(response.read())
 
-    self.connection.close()
+    feeddata = urllib.urlopen(req.to_url()).read()
+    #Log(feeddata)
+    token = NetflixAuthToken.from_string(feeddata)
+
+    #self.connection.close()
 
     return token
 
@@ -96,13 +108,15 @@ class NetflixRequest(object):
     req = oauth.OAuthRequest.from_consumer_and_token(self.consumer, token = req_token, http_url = self.access_token_url)
     req.sign_request(self.signature_method, self.consumer, req_token)
 
-    self.connection.request(req.http_method, self.access_token_url, headers=req.to_header())
+    #self.connection.request(req.http_method, self.access_token_url, headers=req.to_header())
+    #response = self.connection.getresponse()
+    #data = response.read()
+    #token = NetflixAuthToken.from_string(data)
+    #self.connection.close()
 
-    response = self.connection.getresponse()
-    data = response.read()
-    token = NetflixAuthToken.from_string(data)
-
-    self.connection.close()
+    feeddata = urllib.urlopen(req.to_url()).read()
+    #Log(feeddata)
+    token = NetflixAuthToken.from_string(feeddata)
 
     return token
 
@@ -138,7 +152,17 @@ class NetflixRequest(object):
     else:
       return None
 
-    return self.connection.getresponse()
+    try:
+         feeddata = urllib.urlopen(req.to_url()).read()
+         #Log(feeddata)
+
+    except HTTPError, e:
+	 #Log(e.code)
+         if e.code  == 401:
+             feeddata = 401 
+
+    #return self.connection.getresponse()
+    return feeddata
 
 class US_Account(object):
 
@@ -158,7 +182,7 @@ class US_Account(object):
       Log("Testing Access Token")
       access_token = NetflixAuthToken.from_string(Dict['accesstoken'])
       request = NetflixRequest()
-      status = request.make_query(access_token = access_token, query = 'http://api-public.netflix.com/users/%s' % access_token.user_id, returnURL = False).status
+      status = request.make_query(access_token = access_token, query = 'http://api-public.netflix.com/users/%s' % access_token.user_id, returnURL = False)
 
       if status == 401:
         del Dict['accesstoken']
@@ -184,6 +208,9 @@ class US_Account(object):
 
     username = Prefs['username']
     password = Prefs['password']
+
+    #Log(username)
+    #Log(password)
 
     if not username or not password:
       Log("No Username or Password set")
@@ -277,7 +304,7 @@ class US_Account(object):
     Log("Attempting to remove (%s) from queue" % entry_id)
     request = NetflixRequest()
     access_token = NetflixAuthToken.from_string(Dict['accesstoken'])
-    status = request.make_query(access_token = access_token, method = 'DELETE', query ='http://api-public.netflix.com/users/%s/queues/instant/available/%s' % (US_Account.GetUserId(), entry_id), returnURL = False).status
+    status = request.make_query(access_token = access_token, method = 'DELETE', query ='http://api-public.netflix.com/users/%s/queues/instant/available/%s' % (US_Account.GetUserId(), entry_id), returnURL = False)
 
     if status == 401:
       return False
